@@ -12,4 +12,10 @@ wrapRoutes(app);
 // Start cron jobs
 // require('./cronJobs'); // DISABLED
 
-app.listen(PORT, () => console.log(`App listening at port ${PORT}`));
+// Keep-alive to prevent Render spin-down
+const { keepAlive } = require('./keepAlive');
+
+app.listen(PORT, () => {
+  console.log(`App listening at port ${PORT}`);
+  keepAlive();
+});
