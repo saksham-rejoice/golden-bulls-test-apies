@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 4000;
 wrapRoutes(app);
 
 // Start cron jobs
-// require('./cronJobs'); // DISABLED
+import './cronJobs';
 
 // Keep-alive to prevent Render spin-down
 const { keepAlive } = require('./keepAlive');

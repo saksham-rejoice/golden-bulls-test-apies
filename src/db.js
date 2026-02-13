@@ -1,8 +1,20 @@
 const { Pool } = require('pg');
+require('dotenv').config();
 
 const pool = new Pool({
-  connectionString: 'postgresql://neondb_owner:npg_H4OAnFq6xWak@ep-damp-waterfall-ainhhb7c-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require',
+  connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
 
-module.exports = { pool };
+const connectDb = async () => {
+  try {
+    const client = await pool.connect();
+    return client;
+  } catch (err) {
+    console.error('Database connection error:', err.message);
+    console.error('Full error:', err);
+    throw new Error(`Database connection failed: ${err.message}`);
+  }
+};
+
+module.exports = { pool, connectDb };

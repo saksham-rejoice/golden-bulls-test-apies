@@ -1,18 +1,89 @@
-const { pool } = require("../../db");
-
-const currencyOptions = [
-  "AUD/USD",
-  "BTC/USD",
-  "EUR/USD",
-  "GBP/USD",
-  "NZD/USD",
-  "USD/CAD",
-  "USD/CHF",
-  "USD/JPY",
-  "XAU/USD",
-];
+const { connectDb } = require("../../db");
+import { currencyOptions } from "../../constants";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const apiKeys = [
+  process.env.TWELVEDATA_API_KEY1,
+  process.env.TWELVEDATA_API_KEY2,
+  process.env.TWELVEDATA_API_KEY3,
+].filter(Boolean);
+
+const fetchWithFallback = async (url) => {
+  const separator = url.includes("?") ? "&" : "?";
+
+  for (let i = 0; i < apiKeys.length; i++) {
+    const key = apiKeys[i];
+
+    try {
+      console.log(`Trying key ${i + 1}...`);
+      const response = await fetch(`${url}${separator}apikey=${key}`);
+
+      if (response.status === 429) {
+        console.log(`Key ${i + 1} rate limited.`);
+        continue;
+      }
+
+      const data = await response.json();
+
+      if (data.message?.toLowerCase().includes("limit")) {
+        console.log(`Key ${i + 1} credits exhausted.`);
+        continue;
+      }
+
+      console.log(`Key ${i + 1} succeeded.`);
+      return data;
+    } catch (error) {
+      console.log(`Key ${i + 1} network failed:`, error);
+      continue;
+    }
+  }
+
+  throw new Error("All API keys exhausted.");
+};
+
+export const updateCurrencyData = async () => {
+  try {
+    console.log("Starting currency data update...");
+    const results = [];
+    let requestCount = 0;
+
+    for (const symbol of currencyOptions) {
+      if (requestCount === 8) {
+        console.log("Rate limit reached. Waiting 60 seconds...");
+        await sleep(60000);
+        requestCount = 0;
+      }
+
+      console.log(`Fetching data for ${symbol}...`);
+      const data = await fetchWithFallback(
+        `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=1day&outputsize=180`,
+      );
+      requestCount++;
+
+      if (data.status === "ok") {
+        const client = await connectDb();
+        await client.query(
+          "UPDATE currency_timeseries SET meta = $1, values = $2 WHERE currency = $3",
+          [JSON.stringify(data.meta), JSON.stringify(data.values), symbol],
+        );
+        client.release();
+        console.log(`✓ ${symbol} updated successfully`);
+        results.push({ symbol, success: true });
+      } else {
+        console.log(`✗ ${symbol} failed: ${data.message}`);
+        results.push({ symbol, success: false, error: data.message });
+      }
+    }
+
+    console.log("All currencies updated.");
+    return { success: true, results };
+  } catch (err) {
+    console.error("Error:", err.message);
+    console.error("Full error:", err);
+    return { success: false, error: err.message };
+  }
+};
 
 export const insertDataController = async (req, res) => {
   try {
@@ -28,17 +99,16 @@ export const insertDataController = async (req, res) => {
       }
 
       console.log(`Fetching data for ${symbol}...`);
-      const response = await fetch(
-        `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=1day&outputsize=180&apikey=719132ad329042159b7a5c4422639e1a`,
+      const data = await fetchWithFallback(
+        `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=1day&outputsize=180`,
       );
-      const data = await response.json();
       requestCount++;
 
       if (data.status === "ok") {
-        const client = await pool.connect();
+        const client = await connectDb();
         await client.query(
-          "INSERT INTO currency_timeseries (meta, values) VALUES ($1, $2)",
-          [JSON.stringify(data.meta), JSON.stringify(data.values)],
+          "INSERT INTO currency_timeseries (currency, meta, values) VALUES ($1, $2, $3)",
+          [symbol, JSON.stringify(data.meta), JSON.stringify(data.values)],
         );
         client.release();
         console.log(`✓ ${symbol} inserted successfully`);
@@ -53,6 +123,7 @@ export const insertDataController = async (req, res) => {
     return res.json({ success: true, results });
   } catch (err) {
     console.error("Error:", err.message);
+    console.error("Full error:", err);
     return res.status(500).json({ success: false, error: err.message });
   }
 };
@@ -60,7 +131,7 @@ export const insertDataController = async (req, res) => {
 export const getDataController = async (req, res) => {
   try {
     const { days } = req.query;
-    const client = await pool.connect();
+    const client = await connectDb();
     const result = await client.query("SELECT * FROM currency_timeseries");
     client.release();
 
@@ -85,8 +156,8 @@ export const getDataController = async (req, res) => {
       };
     });
 
-    res.json({ success: true, data });
+    return res.json({ success: true, data });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
   }
 };

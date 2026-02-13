@@ -1,4 +1,4 @@
-const { pool } = require("../../db");
+const { connectDb } = require("../../db");
 
 const instruments = [
   { symbol: "AUD/JPY", asset: "forex" },
@@ -17,7 +17,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const insertMarketDataController = async (req, res) => {
   try {
-    const client = await pool.connect();
+    const client = await connectDb();
     let requestCount = 0;
     const results = [];
 
