@@ -13,9 +13,9 @@ const keepAlive = () => {
     } catch (err) {
       console.error('Keep-alive ping failed:', err.message);
     }
-  }, 10 * 60 * 1000); // Every 10 minutes
+  }, 30 * 1000); // Every 30 seconds
 
-  console.log('Keep-alive service started');
+  console.log('Keep-alive service started (30s interval)');
 };
 
 module.exports = { keepAlive };

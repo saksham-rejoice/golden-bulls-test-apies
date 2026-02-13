@@ -6,6 +6,10 @@ const app = express();
 app.use(json());
 app.use(cors());
 
+app.get("/", (req, res) => {
+  res.json({ status: "ok", message: "Server is running" });
+});
+
 const PORT = process.env.PORT || 4000;
 wrapRoutes(app);
 
